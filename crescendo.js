@@ -1,11 +1,14 @@
-require("dotenv").config();
 const debug = require("debug");
 const Docker = require("dockerode");
 const express = require("express");
+const fs = require("fs-extra");
+const morgan = require("morgan");
 
 const logger = debug("crescendo");
 const docker = new Docker();
 const crescendo = express();
+// combined + response time
+crescendo.use(morgan(`:remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - :response-time ms`));
 
 function getCommand(name, options) {
     const required = [
@@ -60,13 +63,19 @@ crescendo.use("/seurat", express.json(), (req, res) => {
         res.status(400).send(err.message);
         return;
     }
+    const timestamp = Date.now();
+    fs.mkdirpSync(process.env.LOG_DIR);
+    const sout = fs.createWriteStream(`${process.env.LOG_DIR}/${timestamp}.out.log`);
+    const serr = fs.createWriteStream(`${process.env.LOG_DIR}/${timestamp}.err.log`);
+    logger("Running container with command %o", command);
     const run = docker.run(
         "crescentdev/crescent-seurat",
         command,
-        [process.stdout, process.stderr],
+        [sout, serr],
         {
             Tty: false,
             HostConfig: {
+                AutoRemove: true,
                 Binds: [
                     `${process.env.HOST_PATH}/${name}:/${name}`,
                     `${input}:${vin}`,
@@ -75,14 +84,14 @@ crescendo.use("/seurat", express.json(), (req, res) => {
             }
         }
     );
+    logger("Started container with log timestamp %d", timestamp);
     res.sendStatus(200);
     setImmediate(async () => {
         try {
-            const [runResult, container] = await run;
-            logger("DOCKER RESULT: %o", runResult);
-            container.remove();
+            const [runResult] = await run;
+            logger("%d completed: %o", timestamp, runResult);
         } catch(err) {
-            logger("DOCKER ERROR: %o", err);
+            logger("%d errored: %o", timestamp, err);
         }
     });
 });
