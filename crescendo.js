@@ -34,10 +34,10 @@ function getCommand(name, options) {
     const command = ["Rscript", name];
     for (const option of required) {
         if (!options[option]) throw new Error(`Missing required parameter "${option}"!`);
-        command.push(`--${option}`, options[option]);
+        command.push(`--${option}`, options[option] + "");
     }
     for (const option of optional) {
-        if (options[option]) command.push(`--${option}`, options[option]);
+        if (options[option]) command.push(`--${option}`, options[option] + "");
     }
     return command;
 }
@@ -85,7 +85,7 @@ crescendo.use("/seurat", express.json(), (req, res) => {
         }
     );
     logger("Started container with log timestamp %d", timestamp);
-    res.sendStatus(200);
+    res.status(201).send(timestamp);
     setImmediate(async () => {
         try {
             const [runResult] = await run;
