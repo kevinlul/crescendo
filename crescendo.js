@@ -4,18 +4,14 @@ const express = require("express");
 const fs = require("fs-extra");
 const morgan = require("morgan");
 
+const Command = require("./command");
+
 const logger = debug("crescendo");
 const docker = new Docker();
-const crescendo = express();
-// combined + response time
-crescendo.use(morgan(`:remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - :response-time ms`));
-
-function getCommand(name, options) {
-    const required = [
-        "input_type",
-        "prefix_outfiles"
-    ];
-    const optional = [
+const seuratCommand = new Command(
+    ["Rscript", "Runs_seurat_v3.R"],
+    ["input_type","prefix_outfiles"],
+    [
         "inputs_remove_barcodes",
         "normalize_and_scale_sample",
         "resolution",
@@ -30,17 +26,12 @@ function getCommand(name, options) {
         "number_cores",
         "save_r_object",
         "run_cwl"
-    ];
-    const command = ["Rscript", name];
-    for (const option of required) {
-        if (!options[option]) throw new Error(`Missing required parameter "${option}"!`);
-        command.push(`--${option}`, options[option] + "");
-    }
-    for (const option of optional) {
-        if (options[option]) command.push(`--${option}`, options[option] + "");
-    }
-    return command;
-}
+    ]
+);
+
+const crescendo = express();
+// combined + response time
+crescendo.use(morgan(`:remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - :response-time ms`));
 
 crescendo.use("/seurat", express.json(), (req, res) => {
     if (!req.body.input) {
@@ -57,7 +48,7 @@ crescendo.use("/seurat", express.json(), (req, res) => {
     const vin = "/in";
     const vout = "/out";
     try {
-        var command = getCommand(name, req.body);
+        var command = seuratCommand.array(req.body);
         command.push("--input", vin, "--outdir", vout);
     } catch(err) {
         res.status(400).send(err.message);
@@ -85,7 +76,7 @@ crescendo.use("/seurat", express.json(), (req, res) => {
         }
     );
     logger("Started container with log timestamp %d", timestamp);
-    res.status(201).send(timestamp);
+    res.status(201).send(timestamp + "");
     setImmediate(async () => {
         try {
             const [runResult] = await run;
