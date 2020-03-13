@@ -4,87 +4,43 @@ const express = require("express");
 const fs = require("fs-extra");
 const morgan = require("morgan");
 
-const Command = require("./command");
+const Service = require("./service");
 
 const logger = debug("crescendo");
 const docker = new Docker();
-const seuratCommand = new Command(
-    ["Rscript", "Runs_seurat_v3.R"],
-    ["input_type","prefix_outfiles"],
-    [
-        "inputs_remove_barcodes",
-        "normalize_and_scale_sample",
-        "resolution",
-        "infile_colour_dim_red_plots",
-        "list_genes",
-        "pca_dimensions",
-        "percent_mito",
-        "percent_ribo",
-        "n_genes",
-        "n_reads",
-        "return_threshold",
-        "number_cores",
-        "save_r_object",
-        "run_cwl"
-    ]
-);
+const seuratConfig = fs.readJSONSync("./seurat.config.json")[0];
+const seuratService = new Service(docker, seuratConfig);
 
 const crescendo = express();
 // combined + response time
 crescendo.use(morgan(`:remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - :response-time ms`));
 
 crescendo.use("/seurat", express.json(), (req, res) => {
-    if (!req.body.input) {
-        res.status(400).send(`Missing required parameter "input"!`);
-        return;
-    }
-    if (!req.body.output) {
-        res.status(400).send(`Missing required parameter "output"!`);
-        return;
-    }
-    const name = "Runs_seurat_v3.R";
-    const input = req.body.input;
-    const output = req.body.output;
-    const vin = "/in";
-    const vout = "/out";
-    try {
-        var command = seuratCommand.array(req.body);
-        command.push("--input", vin, "--outdir", vout);
-    } catch(err) {
-        res.status(400).send(err.message);
-        return;
-    }
     const timestamp = Date.now();
     fs.mkdirpSync(process.env.LOG_DIR);
     const sout = fs.createWriteStream(`${process.env.LOG_DIR}/${timestamp}.out.log`);
     const serr = fs.createWriteStream(`${process.env.LOG_DIR}/${timestamp}.err.log`);
-    logger("Running container with command %o", command);
-    const run = docker.run(
-        "crescentdev/crescent-seurat",
-        command,
-        [sout, serr],
-        {
-            Tty: false,
-            HostConfig: {
-                AutoRemove: true,
-                Binds: [
-                    `${process.env.HOST_PATH}/${name}:/${name}`,
-                    `${input}:${vin}`,
-                    `${output}:${vout}`
-                ]
+    logger("Log timestamp %d", timestamp);
+    try {
+        var run = seuratService.run(
+            timestamp + "",
+            sout,
+            serr,
+            req.body
+        );
+        logger("Starting seurat container with log timestamp %d", timestamp);
+        res.status(201).send(timestamp + "");
+        setImmediate(async () => {
+            try {
+                const [runResult] = await run;
+                logger("%d completed: %o", timestamp, runResult);
+            } catch(err) {
+                logger("%d errored: %o", timestamp, err);
             }
-        }
-    );
-    logger("Started container with log timestamp %d", timestamp);
-    res.status(201).send(timestamp + "");
-    setImmediate(async () => {
-        try {
-            const [runResult] = await run;
-            logger("%d completed: %o", timestamp, runResult);
-        } catch(err) {
-            logger("%d errored: %o", timestamp, err);
-        }
-    });
+        });
+    } catch (err) {
+        res.status(400).send(err.message);
+    }
 });
 
 module.exports = crescendo;
