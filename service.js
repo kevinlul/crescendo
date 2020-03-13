@@ -36,6 +36,7 @@ class Service {
         if (runOptions.network) {
             createOptions.HostConfig.NetworkMode = runOptions.network;
         }
+        logger("%s: using image %s, network %s", name, this.config.image, runOptions.network);
         return this.docker.run(
             this.config.image,
             command,
