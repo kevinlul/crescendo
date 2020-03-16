@@ -54,7 +54,7 @@ function createService(req, res) {
         );
         logger("Starting %s container with log timestamp %d", req.params.service, timestamp);
         res.status(201).send(timestamp + "");
-        setImmediate(serviceCompleteThunk(run, timestamp, req.body.webhook));
+        setImmediate(serviceCompleteThunk(run, timestamp, req.body.webhook, req.body.token || ""));
     } catch (err) {
         sout.end();
         fs.remove(outpath);
@@ -64,7 +64,7 @@ function createService(req, res) {
     }
 }
 
-function serviceCompleteThunk(run, timestamp, webhook) {
+function serviceCompleteThunk(run, timestamp, webhook, token) {
     return async () => {
         let runResult;
         try {
@@ -75,10 +75,12 @@ function serviceCompleteThunk(run, timestamp, webhook) {
             return;
         }
         if (webhook) {
+            const payload = { timestamp, token };
+            Object.assign(payload, runResult);
             try {
                 const response = await fetch(webhook, {
                     method: "POST",
-                    body: JSON.stringify(runResult),
+                    body: JSON.stringify(payload),
                     headers: { "Content-Type": "application/json" }
                 });
                 logger("%d post to webhook %s: %d %s", timestamp, webhook, response.status, response.statusText);
