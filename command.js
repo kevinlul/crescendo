@@ -1,8 +1,8 @@
 class Command {
     constructor(base, required, optional) {
         this.base = base;
-        this.required = required;
-        this.optional = optional;
+        this.required = required || [];
+        this.optional = optional || [];
     }
 
     static pushOption(commandArray, option, value) {
