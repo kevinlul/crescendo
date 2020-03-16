@@ -71,8 +71,8 @@ function serviceCompleteThunk(run, timestamp, webhook, token) {
             [runResult] = await run;
             logger("%d completed: %o", timestamp, runResult);
         } catch (err) {
+            runResult = { Error: err, StatusCode: 255 };
             logger("%d errored: %o", timestamp, err);
-            return;
         }
         if (webhook) {
             const payload = { timestamp, token };
